@@ -186,7 +186,7 @@ architecture Behavioral of project_reti_logiche is
                         if(N < (num_pixel + 2))then
                             o_en <= '1';
                             o_we <= '0';
-                            o_address <= std_logic_vector(to_unsigned(N , o_address'length));--in un ciclo dico l'indirizzo,nel successivo leggo il valore
+                            o_address <= std_logic_vector(to_unsigned(N , o_address'length));
                             NEXT_STATE <= CALCOLA_Wait;--per aspettare un ciclo di clock necessario alla ram
                         else
                             o_address <= (others => '0');
@@ -318,7 +318,7 @@ architecture Behavioral of project_reti_logiche is
                         o_done <= '0';
                         o_en <= '1';
                         o_we <= '1';--abilito la scrittura
-                        o_address <= std_logic_vector(to_unsigned((N + num_pixel), o_address'length));--indirizzo di scrittura pixel N è num_pixel + N   
+                        o_address <= std_logic_vector(to_unsigned((N + num_pixel), o_address'length));--indirizzo di scrittura pixel in posizione N è num_pixel + N  
                         o_data <= std_logic_vector(temp_pixel_value(7 downto 0));--mi interessano solo i primi 8 bit meno significativi
                         num_pixel := n_colonne * n_righe;
                         NEXT_STATE <= SCRIVI_Wait;
