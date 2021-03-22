@@ -23,16 +23,17 @@ use IEEE.NUMERIC_STD.ALL;
 use ieee.std_logic_unsigned.all;
 
 entity project_reti_logiche is
-    Port ( i_clk : in STD_LOGIC;
-           i_rst : in STD_LOGIC;
-           i_start : in STD_LOGIC;
-           i_data : in STD_LOGIC_VECTOR(7 downto 0);--segnale che arriva dalla mem in seguito ad una lettura
-           o_address : out STD_LOGIC_VECTOR(15 downto 0);--per mandare l'indirizzo alla mem
-           o_done : out STD_LOGIC;
-           o_en : out STD_LOGIC;--per poter comunicare con la mem
-           o_we : out STD_LOGIC;--1 per scrivere , 0 per leggere dalla mem
-           o_data : out STD_LOGIC_VECTOR(7 downto 0)--segnale in uscita verso mem        
-           );
+    Port ( 
+          i_clk         : in STD_LOGIC;
+          i_rst         : in STD_LOGIC;
+          i_start       : in STD_LOGIC;
+          i_data        : in STD_LOGIC_VECTOR(7 downto 0);--segnale che arriva dalla RAM in seguito ad una lettura
+          o_address     : out STD_LOGIC_VECTOR(15 downto 0);--per mandare l'indirizzo alla RAM
+          o_done        : out STD_LOGIC;
+          o_en          : out STD_LOGIC;--per poter comunicare con la RAM
+          o_we          : out STD_LOGIC;--1 per scrivere , 0 per leggere dalla RAM
+          o_data        : out STD_LOGIC_VECTOR(7 downto 0)--segnale in uscita verso RAM        
+          );
 end project_reti_logiche;
 
 architecture Behavioral of project_reti_logiche is
@@ -40,10 +41,10 @@ architecture Behavioral of project_reti_logiche is
     type state_type is (IDLE , RESET , START_Indirizzo , START_Wait , START_Read , START_Fine , CALCOLA_MaxMin , CALCOLA_Indirizzo , CALCOLA_Wait , CALCOLA_Fine , CALCOLA_Shift , LEGGI_Indirizzo , LEGGI_Wait , LEGGI_Read , SCRIVI_Indirizzo , SCRIVI_Wait , DONE);
     signal CURRENT_STATE , NEXT_STATE : state_type := IDLE;
 
-    signal resetAttivato : std_logic := '0';--viene posto uno quando viene attivato il reset
+    signal resetAttivato : std_logic := '0';--viene posto ad 1 quando viene attivato il reset, a 0 quando la macchina è nello stato di RESET 
 
     begin
-        --Processo gestione stato successivo
+        --Processo gestione stato successivo sincronizzato sul fronte di salita del clock
         stato:process(i_clk)
         begin
             if(rising_edge(i_clk)) then
@@ -57,18 +58,18 @@ architecture Behavioral of project_reti_logiche is
         
         
         --Processo gestione macchina a stati 
-        combin:process(i_clk , i_rst)--CURRENT_STATE , i_data , i_start)  
+        combin:process(i_clk , i_rst)  
          
         --Dichiarazione variabili e loro inizializzazione     
-        variable n_colonne , n_righe                                : integer := 0;
-        variable num_pixel                                          : integer := 0;
-        variable max_pixel_value                                    : integer := 0;
-        variable min_pixel_value                                    : integer := 255;
-        variable delta_value                                        : integer := 0;
-        variable shift_level                                        : integer := 0;
-        variable temp_pixel                                         : integer := 0;
-        variable N                                                  : integer := 0;--pos pixel corrente
-        variable temp_pixel_value                                   : unsigned(15 downto 0) := (others => '0');
+        variable n_colonne , n_righe             : integer := 0;
+        variable num_pixel                       : integer := 0;--numero totale di pixel
+        variable max_pixel_value                 : integer := 0;
+        variable min_pixel_value                 : integer := 255;
+        variable delta_value                     : integer := 0;
+        variable shift_level                     : integer := 0;
+        variable N                               : integer := 0;--pos pixel corrente
+        variable temp_pixel                      : integer := 0;--contiene il valore del pixel corrente
+        variable temp_pixel_value                : unsigned(15 downto 0) := (others => '0');--per effettuare lo shift
         
         begin  
              if(i_rst = '1') and  (resetAttivato = '0')then
@@ -103,11 +104,12 @@ architecture Behavioral of project_reti_logiche is
                         temp_pixel_value := (others => '0');
                         
                     when RESET => 
+                        --inizializzo tutto per il caso in cui il reset venga attivato in uno stato casuale successivo
                         o_done <= '0';
                         o_address <= (others => '0');
                         o_data <= (others => '0');
-                        --o_en <= '0';-------------------------
-                        --o_we <= '0';-------------------------
+                        o_en <= '0';
+                        o_we <= '0';
                         
                         N := 0;
                         n_colonne := 0;
@@ -157,9 +159,9 @@ architecture Behavioral of project_reti_logiche is
                         o_address <= (others => '0');
                         o_data <= (others => '0');
                         --Leggo le dimensioni dell'immagine da convertire
-                        if(N = 0) then
+                        if(N = 0) then--se ho letto il byte 0
                             n_colonne := conv_integer(i_data);
-                        else
+                        else--se ho letto il lbyte 1
                             n_righe := conv_integer(i_data);
                         end if;
                         o_en <= '0';
@@ -206,7 +208,7 @@ architecture Behavioral of project_reti_logiche is
                         o_done <= '0';
                         o_address <= (others => '0');
                         o_data <= (others => '0');
-                        --scorro tutti i pixel e trovo max e min                                        
+                        --confronto pixel corrente con max e min già salvati                                        
                         temp_pixel := conv_integer(i_data);                  
                         if(temp_pixel > max_pixel_value) then 
                             max_pixel_value := temp_pixel;
@@ -240,8 +242,9 @@ architecture Behavioral of project_reti_logiche is
                         o_data <= (others => '0');
                         
                         delta_value := max_pixel_value - min_pixel_value;
-                        num_pixel := n_colonne * n_righe;
+                        num_pixel := n_colonne * n_righe;                      
                         
+                        --calcolo dello shift con un controllo a soglia
                         if(delta_value >= 255) then 
                             shift_level := 0;
                         elsif(delta_value >= 127) then 
@@ -302,9 +305,11 @@ architecture Behavioral of project_reti_logiche is
                         temp_pixel := conv_integer(i_data);--valore pixel corrente letto
                         temp_pixel := temp_pixel - min_pixel_value;
                         temp_pixel_value := to_unsigned(temp_pixel , temp_pixel_value'length);--metto l'intero in un unsigned
-                        temp_pixel_value := temp_pixel_value sll shift_level;--faccio lo shift
+                        
+                        --temp_pixel_value := temp_pixel_value sll shift_level;--caso shift con sll
+                        temp_pixel_value := shift_left(temp_pixel_value , shift_level);--caso shift con shift_left
     
-                        if(temp_pixel_value > to_unsigned(255 , temp_pixel_value'length))then
+                        if(temp_pixel_value > to_unsigned(255 , temp_pixel_value'length))then--controllo se con lo shift ho superato il valore 255
                             temp_pixel_value := to_unsigned(255 , temp_pixel_value'length);
                         end if;
                         NEXT_STATE <= SCRIVI_indirizzo;
@@ -313,8 +318,8 @@ architecture Behavioral of project_reti_logiche is
                         o_done <= '0';
                         o_en <= '1';
                         o_we <= '1';--abilito la scrittura
-                        o_address <= std_logic_vector(to_unsigned((N + num_pixel), o_address'length));--indirizzo di scrittura pixel N   
-                        o_data <= std_logic_vector(temp_pixel_value(7 downto 0));
+                        o_address <= std_logic_vector(to_unsigned((N + num_pixel), o_address'length));--indirizzo di scrittura pixel N è num_pixel + N   
+                        o_data <= std_logic_vector(temp_pixel_value(7 downto 0));--mi interessano solo i primi 8 bit meno significativi
                         num_pixel := n_colonne * n_righe;
                         NEXT_STATE <= SCRIVI_Wait;
                         
@@ -324,7 +329,7 @@ architecture Behavioral of project_reti_logiche is
                         o_we <= '1';
                         o_address <= std_logic_vector(to_unsigned(N + num_pixel , o_address'length));
                         o_data <= std_logic_vector(temp_pixel_value(7 downto 0));
-                        temp_pixel_value := (others => '0');--riinizzializzo
+                        temp_pixel_value := (others => '0');--riinizzializzo per conversioni successive
                         N := N + 1;
                         NEXT_STATE <= LEGGI_Indirizzo;   
                         
@@ -339,7 +344,7 @@ architecture Behavioral of project_reti_logiche is
                         if(i_start = '0') then
                             NEXT_STATE <= RESET;
                         else
-                            NEXT_STATE <= CURRENT_STATE;--non dovrebbe servire
+                            NEXT_STATE <= CURRENT_STATE;
                         end if;
                      
                 end case; 
